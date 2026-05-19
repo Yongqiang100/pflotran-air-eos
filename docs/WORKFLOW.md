@@ -297,6 +297,7 @@ cd petsc
   --download-mpich=yes \
   --download-fblaslapack=yes \
   --download-hdf5=yes \
+  --download-hdf5-fortran-bindings=yes \
   --download-metis=yes \
   --download-parmetis=yes
 make all
