@@ -289,17 +289,8 @@ Milestones to snapshot:
 cd ~
 git clone -b release https://gitlab.com/petsc/petsc.git petsc
 cd petsc
-./configure \
-  --with-cc=gcc \
-  --with-cxx=g++ \
-  --with-fc=gfortran \
-  --with-debugging=0 \
-  --download-mpich=yes \
-  --download-fblaslapack=yes \
-  --download-hdf5=yes \
-  --download-hdf5-fortran-bindings=yes \
-  --download-metis=yes \
-  --download-parmetis=yes
+./configure --COPTFLAGS='-O3' --CXXOPTFLAGS='-O3' --FOPTFLAGS='-O3 -Wno-unused-function' --with-debugging=no --download-mpich=yes --download-hdf5=yes --download-hdf5-fortran-bindings=yes --download-fblaslapack=yes --download-metis=yes --download-parmetis=yes
+
 make all
 make check
 export PETSC_DIR=$HOME/petsc
