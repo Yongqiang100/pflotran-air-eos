@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "pflotran-air-eos: High-pressure air EOS for PFLOTRAN in compressed-air energy storage applications"
+authors:
+  - family-names: "Chen"
+    given-names: "Yongqiang"
+    affiliation: "Curtin University"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"  # uncomment and fill if you have one
+version: 0.1.0
+date-released: 2026-05-19
+license: MIT
+repository-code: "https://github.com/Yongqiang100/pflotran-air-eos"
+abstract: >-
+  Standalone Fortran modules and PFLOTRAN integration code implementing
+  a high-pressure air equation of state for compressed-air energy
+  storage (CAES) geochemistry simulations. Combines Peng-Robinson with
+  Peneloux volume translation for density, Lemmon-Jacobsen (2004) for
+  viscosity, Henry's law for O2/N2/CO2/Ar dissolved species with
+  Setschenow salting-out corrections, IAPWS-IF97 saturation pressure
+  with Poynting correction for water vapour partitioning, and NIST
+  Shomate ideal-gas enthalpy. Includes regression test decks and a
+  reproducible workflow document for similar EOS integrations.
+keywords:
+  - PFLOTRAN
+  - compressed-air energy storage
+  - CAES
+  - equation of state
+  - Peng-Robinson
+  - reactive transport
+  - hydrogeochemistry
+  - groundwater quality

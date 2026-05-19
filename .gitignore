@@ -1,0 +1,46 @@
+# Fortran build artifacts
+*.o
+*.mod
+*.a
+
+# Test executables
+src/test_air_eos_pr
+src/test_air_eos_pr_sweep
+src/test_air_henry
+src/test_air_watervapour
+src/test_air_properties
+src/test_air_eos_module
+
+# Test output
+src/air_eos_sweep.csv
+
+# PFLOTRAN simulation outputs
+regression_tests/**/*.tec
+regression_tests/**/*.h5
+regression_tests/**/*.out
+regression_tests/**/*.regression
+regression_tests/**/*.chk
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Editors
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+*.bak
+*.bak.*
+*~
+
+# Tarballs from backups
+*.tar.gz

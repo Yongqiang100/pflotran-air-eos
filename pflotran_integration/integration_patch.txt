@@ -1,0 +1,269 @@
+!===========================================================================
+! Air EOS PFLOTRAN integration patch
+!
+! Contents:
+!   Section A: New code blocks to insert into src/pflotran/eos_gas.F90
+!   Section B: New code block to insert into src/pflotran/eos.F90
+!
+! After applying, rebuild PFLOTRAN. Then in a deck use:
+!     EOS GAS
+!       DENSITY PR_PENELOUX_AIR
+!     END
+! to activate the new air EOS.
+!===========================================================================
+
+
+!===========================================================================
+! SECTION A — eos_gas.F90 edits
+!===========================================================================
+
+! ---------------------------------------------------------------------------
+! A1. Add to the `use` statements near the top of the module (after
+!     `use Utility_module, only : Equal`).
+! ---------------------------------------------------------------------------
+
+  use Air_EOS_module
+  use Air_Properties_module, only : AirViscosity
+
+
+! ---------------------------------------------------------------------------
+! A2. Add to the `public ::` list for setter routines (the list containing
+!     EOSGasSetDensityIdeal, EOSGasSetDensityPRMethane, etc.).
+! ---------------------------------------------------------------------------
+
+            EOSGasSetPRPenelouxAir, &
+
+
+! ---------------------------------------------------------------------------
+! A3. New setter routine. Add near the other setters in the contains
+!     section, e.g. just after EOSGasSetDensityPRMethane ends.
+! ---------------------------------------------------------------------------
+
+! ************************************************************************** !
+
+subroutine EOSGasSetPRPenelouxAir()
+  ! Binds the gas EOS function pointers to the high-pressure air
+  ! adapters (Peng-Robinson + Peneloux with L-J 2004 viscosity and
+  ! NIST Shomate ideal-gas enthalpy). Henry pointer left at default.
+  implicit none
+  EOSGasDensityEnergyPtr => EOSGasDensityEnergyPRAir
+  EOSGasDensityPtr       => EOSGasDensityPRAir
+  EOSGasEnergyPtr        => EOSGasEnergyPRAir
+  EOSGasViscosityPtr     => EOSGasViscosityPRAir
+end subroutine EOSGasSetPRPenelouxAir
+
+
+! ---------------------------------------------------------------------------
+! A4. The four adapter routines. Add before the final
+!     `end module EOS_Gas_module`.
+! ---------------------------------------------------------------------------
+
+! ************************************************************************** !
+
+subroutine EOSGasDensityPRAir(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
+  ! Adapter: Air_EOS_module density (kg/m^3, K, J/mol) -> PFLOTRAN
+  ! convention (kmol/m^3, C, J/kmol). Uses module-scope fmw_gas
+  ! (kg/kmol), which is set to FMWAIR by default in EOSGasInit.
+  implicit none
+
+  PetscReal, intent(in) :: T        ! temperature [C]
+  PetscReal, intent(in) :: P        ! pressure [Pa]
+  PetscReal, intent(out) :: Rho_gas ! gas density [kmol/m^3]
+  PetscReal, intent(out) :: dRho_dT
+  PetscReal, intent(out) :: dRho_dP
+  PetscErrorCode, intent(out) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  PetscReal :: T_K
+  PetscReal :: rho_kg, mu_dum, fug_dum, hdep_dum
+  PetscReal :: drho_dT_kg, drho_dP_kg, dmu_dT, dmu_dP
+  PetscReal :: dfug_dT, dfug_dP, dhdep_dT, dhdep_dP
+
+  T_K = T + T273K
+
+  call AirEOSGetGasProperties(P, T_K,                                       &
+                              rho_kg, mu_dum, fug_dum, hdep_dum,            &
+                              drho_dP_kg, drho_dT_kg,                       &
+                              dmu_dP, dmu_dT,                               &
+                              dfug_dP, dfug_dT,                             &
+                              dhdep_dP, dhdep_dT, ierr)
+  if (ierr /= 0) return
+
+  Rho_gas = rho_kg / fmw_gas
+  dRho_dT = drho_dT_kg / fmw_gas
+  dRho_dP = drho_dP_kg / fmw_gas
+
+end subroutine EOSGasDensityPRAir
+
+! ************************************************************************** !
+
+subroutine EOSGasEnergyPRAir(T,P,H,dH_dT,dH_dP,U,dU_dT,dU_dP,ierr)
+  ! Adapter: total enthalpy = ideal-gas reference + PR departure,
+  ! in PFLOTRAN's J/kmol. Internal energy U = H - P/Rho_molar.
+  implicit none
+
+  PetscReal, intent(in) :: T, P
+  PetscReal, intent(out) :: H, dH_dT, dH_dP
+  PetscReal, intent(out) :: U, dU_dT, dU_dP
+  PetscErrorCode, intent(out) :: ierr
+
+  PetscReal :: T_K
+  PetscReal :: h_Jmol, dh_dT_Jmol, dh_dP_Jmol
+  PetscReal :: rho_kg, mu_dum, fug_dum, hdep_dum
+  PetscReal :: drho_dT_kg, drho_dP_kg, dmu_dT, dmu_dP
+  PetscReal :: dfug_dT, dfug_dP, dhdep_dT, dhdep_dP
+  PetscReal :: Rho_kmol, dRho_dT_km, dRho_dP_km
+
+  T_K = T + T273K
+
+  call AirEOSGetTotalEnthalpy(P, T_K, h_Jmol, dh_dP_Jmol, dh_dT_Jmol, ierr)
+  if (ierr /= 0) return
+  H = h_Jmol * 1.0d3
+  dH_dT = dh_dT_Jmol * 1.0d3
+  dH_dP = dh_dP_Jmol * 1.0d3
+
+  call AirEOSGetGasProperties(P, T_K,                                       &
+                              rho_kg, mu_dum, fug_dum, hdep_dum,            &
+                              drho_dP_kg, drho_dT_kg,                       &
+                              dmu_dP, dmu_dT,                               &
+                              dfug_dP, dfug_dT,                             &
+                              dhdep_dP, dhdep_dT, ierr)
+  if (ierr /= 0) return
+  Rho_kmol = rho_kg / fmw_gas
+  dRho_dT_km = drho_dT_kg / fmw_gas
+  dRho_dP_km = drho_dP_kg / fmw_gas
+
+  if (Rho_kmol > 1.0d-10) then
+    U     = H - P / Rho_kmol
+    dU_dT = dH_dT + (P / Rho_kmol**2) * dRho_dT_km
+    dU_dP = dH_dP - 1.0d0 / Rho_kmol + (P / Rho_kmol**2) * dRho_dP_km
+  else
+    U     = H
+    dU_dT = dH_dT
+    dU_dP = dH_dP
+  endif
+
+end subroutine EOSGasEnergyPRAir
+
+! ************************************************************************** !
+
+subroutine EOSGasDensityEnergyPRAir(T,P,Rho_gas,dRho_dT,dRho_dP,             &
+                                    H,dH_dT,dH_dP,U,dU_dT,dU_dP,ierr,       &
+                                    table_idxs)
+  ! Combined density + energy adapter. Single call to
+  ! AirEOSGetGasProperties + AirEOSGetTotalEnthalpy.
+  implicit none
+
+  PetscReal, intent(in) :: T, P
+  PetscReal, intent(out) :: Rho_gas, dRho_dT, dRho_dP
+  PetscReal, intent(out) :: H, dH_dT, dH_dP
+  PetscReal, intent(out) :: U, dU_dT, dU_dP
+  PetscErrorCode, intent(out) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  PetscReal :: T_K
+  PetscReal :: rho_kg, mu_dum, fug_dum, hdep_dum
+  PetscReal :: drho_dT_kg, drho_dP_kg, dmu_dT, dmu_dP
+  PetscReal :: dfug_dT, dfug_dP, dhdep_dT, dhdep_dP
+  PetscReal :: h_Jmol, dh_dT_Jmol, dh_dP_Jmol
+
+  T_K = T + T273K
+
+  call AirEOSGetGasProperties(P, T_K,                                       &
+                              rho_kg, mu_dum, fug_dum, hdep_dum,            &
+                              drho_dP_kg, drho_dT_kg,                       &
+                              dmu_dP, dmu_dT,                               &
+                              dfug_dP, dfug_dT,                             &
+                              dhdep_dP, dhdep_dT, ierr)
+  if (ierr /= 0) return
+
+  call AirEOSGetTotalEnthalpy(P, T_K, h_Jmol, dh_dP_Jmol, dh_dT_Jmol, ierr)
+  if (ierr /= 0) return
+
+  Rho_gas = rho_kg / fmw_gas
+  dRho_dT = drho_dT_kg / fmw_gas
+  dRho_dP = drho_dP_kg / fmw_gas
+
+  H = h_Jmol * 1.0d3
+  dH_dT = dh_dT_Jmol * 1.0d3
+  dH_dP = dh_dP_Jmol * 1.0d3
+
+  if (Rho_gas > 1.0d-10) then
+    U     = H - P / Rho_gas
+    dU_dT = dH_dT + (P / Rho_gas**2) * dRho_dT
+    dU_dP = dH_dP - 1.0d0 / Rho_gas + (P / Rho_gas**2) * dRho_dP
+  else
+    U     = H
+    dU_dT = dH_dT
+    dU_dP = dH_dP
+  endif
+
+end subroutine EOSGasDensityEnergyPRAir
+
+! ************************************************************************** !
+
+subroutine EOSGasViscosityPRAir(T, P_comp, P_gas, Rho_comp, V_mix,           &
+                                calculate_derivative, dV_dT, dV_dPcomp,      &
+                                dV_dPgas, dV_dRhocomp, ierr, table_idxs)
+  ! Adapter: L-J 2004 air viscosity. Takes density in kmol/m^3 from
+  ! PFLOTRAN, converts to kg/m^3 for our standalone routine.
+  implicit none
+
+  PetscReal, intent(in) :: T         ! temperature [C]
+  PetscReal, intent(in) :: P_comp    ! air pressure [Pa]
+  PetscReal, intent(in) :: P_gas     ! gas pressure [Pa]
+  PetscReal, intent(in) :: Rho_comp  ! gas density [kmol/m^3]
+  PetscReal, intent(out) :: V_mix
+  PetscBool, intent(in) :: calculate_derivative
+  PetscReal, intent(out) :: dV_dT, dV_dPcomp, dV_dPgas, dV_dRhocomp
+  PetscErrorCode, intent(out) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  PetscReal :: T_K, rho_kg
+  PetscReal :: dmu_dT_K, dmu_drho_kg
+
+  T_K = T + T273K
+  rho_kg = Rho_comp * fmw_gas
+
+  call AirViscosity(T_K, rho_kg, V_mix, dmu_dT_K, dmu_drho_kg, ierr)
+
+  if (ierr == 0 .and. calculate_derivative) then
+    dV_dT       = dmu_dT_K
+    dV_dPcomp   = 0.0d0
+    dV_dPgas    = 0.0d0
+    dV_dRhocomp = dmu_drho_kg * fmw_gas
+  else
+    dV_dT       = 0.0d0
+    dV_dPcomp   = 0.0d0
+    dV_dPgas    = 0.0d0
+    dV_dRhocomp = 0.0d0
+  endif
+
+end subroutine EOSGasViscosityPRAir
+
+
+!===========================================================================
+! SECTION B — eos.F90 edits
+!===========================================================================
+
+! ---------------------------------------------------------------------------
+! B1. In the GAS DENSITY case block, add a new case for our keyword
+!     AFTER the PR_METHANE case and BEFORE the IDEAL/DEFAULT case.
+!
+!     EXISTING CODE:
+!
+!         case('PR_METHANE')
+!           call EOSGasSetDensityPRMethane()
+!         case('IDEAL','DEFAULT')
+!           call EOSGasSetDensityIdeal()
+!
+!     MODIFY TO:
+!
+!         case('PR_METHANE')
+!           call EOSGasSetDensityPRMethane()
+!         case('PR_PENELOUX_AIR')                  ! NEW
+!           call EOSGasSetPRPenelouxAir()          ! NEW
+!         case('IDEAL','DEFAULT')
+!           call EOSGasSetDensityIdeal()
+!
+! ---------------------------------------------------------------------------
